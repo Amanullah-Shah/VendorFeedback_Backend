@@ -3,6 +3,7 @@ using feedback.ViewModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace feedback.Controllers
 {
@@ -20,79 +21,231 @@ namespace feedback.Controllers
 
 
 
-        [HttpGet("piechart/{questionId}")]
-        public async Task<IActionResult> GetChartSummary(int questionId)
+        [HttpGet("piechart/{questionId}/{regionId}")]
+        public async Task<IActionResult> GetChartSummary(int questionId, int regionId)
         {
-            // Retrieve AnswerID for the given QuestionId
-            var answerIds = await _context.FeedbackDetails
-                .Where(fd => fd.QuestionId == questionId)
-                .Select(fd => fd.AnswerID)
-                .Distinct()
-                .ToListAsync();
-
-            // Get answer details for the question
-            var answers = await _context.Service_answer
-                .Where(a => a.QuestionsId == questionId)
-                .ToListAsync();
-
-            // Retrieve feedback counts based on answer IDs
-            var feedbackCounts = await _context.FeedbackDetails
-                .Where(fd => fd.QuestionId == questionId)
-                .GroupBy(fd => fd.AnswerID)
-                .Select(g => new
-                {
-                    AnswerID = g.Key,
-                    Count = g.Count()
-                })
-                .ToListAsync();
-
-            // Prepare the answer summary
-            var totalCount = feedbackCounts.Sum(fc => fc.Count);
-            var answerSummaries = answers.Select(a =>
+            if (regionId != 0)
             {
-                var count = feedbackCounts.FirstOrDefault(fc => fc.AnswerID == a.id)?.Count ?? 0;
-                var percentage = totalCount > 0 ? Math.Round((count / (double)totalCount) * 100, 2) : 0;
+                // Retrieve AnswerID for the given QuestionId
+                var answerIds = await _context.FeedbackDetails
+                    .Where(fd => fd.QuestionId == questionId)
+                    .Select(fd => fd.AnswerID)
+                    .Distinct()
+                    .ToListAsync();
 
-                return new AnswerSummary
+                // Get answer details for the question
+                var answers = await _context.Service_answer
+                    .Where(a => a.QuestionsId == questionId)
+                    .ToListAsync();
+
+                // Retrieve feedback counts based on answer IDs
+                var feedbackCounts = await _context.FeedbackDetails
+                    .Where(fd => fd.QuestionId == questionId &&
+                    _context.FeedbackMasters.Any(fm => fm.Id == fd.FeedbackMasterId && fm.RegionId == regionId)
+                    )
+                    .GroupBy(fd => fd.AnswerID)
+                    .Select(g => new
+                    {
+                        AnswerID = g.Key,
+                        Count = g.Count()
+                    })
+                    .ToListAsync();
+
+                // Prepare the answer summary
+                var totalCount = feedbackCounts.Sum(fc => fc.Count);
+                var answerSummaries = answers.Select(a =>
                 {
-                    Name = a.name,
-                    Count = count,
-                    Percentage = percentage
-                };
-            }).ToList();
+                    var count = feedbackCounts.FirstOrDefault(fc => fc.AnswerID == a.id)?.Count ?? 0;
+                    var percentage = totalCount > 0 ? Math.Round((count / (double)totalCount) * 100, 2) : 0;
 
-            return Ok(answerSummaries);
+                    return new AnswerSummary
+                    {
+                        Name = a.name,
+                        Count = count,
+                        Percentage = percentage
+                    };
+                }).ToList();
+
+                return Ok(answerSummaries);
+            }
+            else
+            {
+                // Retrieve AnswerID for the given QuestionId
+                var answerIds = await _context.FeedbackDetails
+                    .Where(fd => fd.QuestionId == questionId)
+                    .Select(fd => fd.AnswerID)
+                    .Distinct()
+                    .ToListAsync();
+
+                // Get answer details for the question
+                var answers = await _context.Service_answer
+                    .Where(a => a.QuestionsId == questionId)
+                    .ToListAsync();
+
+                // Retrieve feedback counts based on answer IDs
+                var feedbackCounts = await _context.FeedbackDetails
+                    .Where(fd => fd.QuestionId == questionId &&
+                    _context.FeedbackMasters.Any(fm => fm.Id == fd.FeedbackMasterId)
+                    )
+                    .GroupBy(fd => fd.AnswerID)
+                    .Select(g => new
+                    {
+                        AnswerID = g.Key,
+                        Count = g.Count()
+                    })
+                    .ToListAsync();
+
+                // Prepare the answer summary
+                var totalCount = feedbackCounts.Sum(fc => fc.Count);
+                var answerSummaries = answers.Select(a =>
+                {
+                    var count = feedbackCounts.FirstOrDefault(fc => fc.AnswerID == a.id)?.Count ?? 0;
+                    var percentage = totalCount > 0 ? Math.Round((count / (double)totalCount) * 100, 2) : 0;
+
+                    return new AnswerSummary
+                    {
+                        Name = a.name,
+                        Count = count,
+                        Percentage = percentage
+                    };
+                }).ToList();
+
+                return Ok(answerSummaries);
+            }
         }
+
+
+        [HttpGet("piechartBranchDetails/{questionId}/{regionId}/{answerName}")]
+        public async Task<IActionResult> GetChartSummaryBranch(int questionId, int regionId, string answerName)
+        {
+            if(regionId!=0)
+            {
+                // Retrieve AnswerID for the given QuestionId
+
+                var answerID = await _context.Service_answer
+                    .Where(sa => sa.name == answerName && sa.QuestionsId == questionId)
+                    .Select(sa => sa.id)
+                    .FirstOrDefaultAsync();
+                // Retrieve feedback counts based on answer IDs
+                var feedbackCounts = await _context.FeedbackDetails
+           .Where(fd => fd.QuestionId == questionId && fd.AnswerID == answerID &&
+           _context.FeedbackMasters.Any(fm => fm.Id == fd.FeedbackMasterId && fm.RegionId == regionId)
+           )
+           .Select(fd => new
+           {
+               BranchId = _context.FeedbackMasters
+                   .Where(fm => fm.Id == fd.FeedbackMasterId)
+                   .Select(fm => fm.BranchId)
+                   .FirstOrDefault(),
+
+               Comment = _context.FeedbackMasters
+                   .Where(fm => fm.Id == fd.FeedbackMasterId)
+                   .Select(fm => fm.Comment)
+                   .FirstOrDefault()  // Get the Review column from the FeedbackMasters table
+           })
+           .Distinct()
+           .ToListAsync();
+
+                var feedbackWithBranchNames = feedbackCounts.Select(fc => new
+                {
+                    BranchName = _context.Branches
+                        .Where(b => b.Id == fc.BranchId)
+                        .Select(b => b.BranchName)
+                        .FirstOrDefault(),  // Get BranchName from the Branches table
+
+                    Comment = fc.Comment  // Include the Review column in the result
+                }).ToList();
+
+                return Ok(feedbackWithBranchNames);
+            }
+            else
+            {
+                // Retrieve AnswerID for the given QuestionId
+
+                var answerID = await _context.Service_answer
+                    .Where(sa => sa.name == answerName && sa.QuestionsId == questionId)
+                    .Select(sa => sa.id)
+                    .FirstOrDefaultAsync();
+                // Retrieve feedback counts based on answer IDs
+                var feedbackCounts = await _context.FeedbackDetails
+           .Where(fd => fd.QuestionId == questionId && fd.AnswerID == answerID &&
+           _context.FeedbackMasters.Any(fm => fm.Id == fd.FeedbackMasterId)
+           )
+           .Select(fd => new
+           {
+               BranchId = _context.FeedbackMasters
+                   .Where(fm => fm.Id == fd.FeedbackMasterId)
+                   .Select(fm => fm.BranchId)
+                   .FirstOrDefault(),
+
+               Comment = _context.FeedbackMasters
+                   .Where(fm => fm.Id == fd.FeedbackMasterId)
+                   .Select(fm => fm.Comment)
+                   .FirstOrDefault()  // Get the Review column from the FeedbackMasters table
+           })
+           .Distinct()
+           .ToListAsync();
+
+                var feedbackWithBranchNames = feedbackCounts.Select(fc => new
+                {
+                    BranchName = _context.Branches
+                        .Where(b => b.Id == fc.BranchId)
+                        .Select(b => b.BranchName)
+                        .FirstOrDefault(),  // Get BranchName from the Branches table
+
+                    Comment = fc.Comment  // Include the Review column in the result
+                }).ToList();
+
+                return Ok(feedbackWithBranchNames);
+            }
+
+
+          
+        }
+
+
+
         [HttpGet("summary/{date}")]
         public async Task<IActionResult> GetFeedbackSummary(DateTime date)
         {
             var endDate = DateTime.Today;
-            var feedbackDetails = await _context.PerformanceVM
-              .FromSqlRaw(@"
-                SELECT  d.[Id]
-     
-      ,d.[QuestionId]
-      ,d.[AnswerID],
-	  v.Name,
-	  v.Id as vendorid
+
+            // Fetching data using LINQ query instead of raw SQL
+            var feedbackDetails = (from d in _context.FeedbackDetails
+                           join f in _context.FeedbackMasters on d.FeedbackMasterId equals f.Id
+                           join v in _context.VendorMasters on f.VendorMasterId equals v.Id
+                           where f.Date >= date && f.Date <= endDate
+                           select new
+                           {
+                               FeedbackDetailId = d.Id,
+                               QuestionId = d.QuestionId,
+                               AnswerId = d.AnswerID,
+                               VendorName = v.Name,
+                               VendorId = v.Id
+                           }).ToList();
 
 
-   
-  FROM [feedback_react].[dbo].[FeedbackDetails] d 
-  inner join [feedback_react].[dbo].[FeedbackMasters] f on f.Id = d.FeedbackMasterId
-  inner join [feedback_react].[dbo].VendorMasters v on v.Id = f.VendorMasterId where f.Date BETWEEN {0} AND {1}
-            ", date, endDate)
-              .ToListAsync();
+            //var feedbackDetails = await _context.FeedbackDetails
+            //    .Where(d => d.FeedbackMaster.Date >= date && d.FeedbackMaster.Date <= endDate)
+            //    .Select(d => new PerformanceVM
+            //    {
+            //        Id = d.Id,
+            //        QuestionId = d.QuestionId,
+            //        AnswerID = d.AnswerID,
+            //        vendorid = d.FeedbackMaster.VendorMaster.Id,
+            //        Name = d.FeedbackMaster.VendorMaster.Name
+            //    })
+            //    .ToListAsync();
 
             // Group by Vendor
-            var groupedByVendor = feedbackDetails.GroupBy(fd => new { fd.vendorid, fd.Name });
+            var groupedByVendor = feedbackDetails.GroupBy(fd => new { fd.VendorId, fd.VendorName });
 
             var vendorSummaries = groupedByVendor.Select(group =>
             {
                 var totalCount = group.Count();
-                var poorCount = group.Count(fd => IsPoor(fd.AnswerID));
-                var normalCount = group.Count(fd => IsNormal(fd.AnswerID));
-                var goodCount = group.Count(fd => IsGood(fd.AnswerID));
+                var poorCount = group.Count(fd => IsPoor(fd.AnswerId));
+                var normalCount = group.Count(fd => IsNormal(fd.AnswerId));
+                var goodCount = group.Count(fd => IsGood(fd.AnswerId));
 
                 var poorPercentage = totalCount > 0 ? Math.Round((poorCount / (double)totalCount) * 100, 2) : 0;
                 var normalPercentage = totalCount > 0 ? Math.Round((normalCount / (double)totalCount) * 100, 2) : 0;
@@ -100,8 +253,8 @@ namespace feedback.Controllers
 
                 return new FeedbackSummary
                 {
-                    VendorId = group.Key.vendorid,
-                    VendorName = group.Key.Name,
+                    VendorId = group.Key.VendorId,
+                    VendorName = group.Key.VendorName,
                     TotalCount = totalCount,
                     PoorCount = poorCount,
                     NormalCount = normalCount,
@@ -114,36 +267,48 @@ namespace feedback.Controllers
 
             return Ok(vendorSummaries);
         }
+
 
 
 
         [HttpGet("summary")]
         public async Task<IActionResult> GetSummary()
         {
-            // Raw SQL Query
-            var feedbackDetails = await _context.PerformanceVM
-                .FromSqlRaw(@"
-                SELECT 
-                    d.[Id], 
-                    d.[QuestionId], 
-                    d.[AnswerID], 
-                    v.Name, 
-                    v.Id as vendorId
-                FROM [feedback_react].[dbo].[FeedbackDetails] d 
-                INNER JOIN [feedback_react].[dbo].[FeedbackMasters] f ON f.Id = d.FeedbackMasterId
-                INNER JOIN [feedback_react].[dbo].[VendorMasters] v ON v.Id = f.VendorMasterId
-            ")
-                .ToListAsync();
+
+
+            var feedbackDetails = (from d in _context.FeedbackDetails
+                                   join f in _context.FeedbackMasters on d.FeedbackMasterId equals f.Id
+                                   join v in _context.VendorMasters on f.VendorMasterId equals v.Id
+                                   select new
+                                   {
+                                       FeedbackDetailId = d.Id,
+                                       QuestionId = d.QuestionId,
+                                       AnswerId = d.AnswerID,
+                                       VendorName = v.Name,
+                                       VendorId = v.Id
+                                   }).ToList();
+            //var feedbackDetails = await _context.FeedbackDetails
+            //    .Include(d => d.FeedbackMaster)       // Include FeedbackMaster to access related data
+            //    .ThenInclude(fm => fm.VendorMaster)    // Include VendorMaster to access related data
+            //    .Select(d => new PerformanceVM
+            //    {
+            //        Id = d.Id,
+            //        QuestionId = d.QuestionId,
+            //        AnswerID = d.AnswerID,
+            //        Name = d.FeedbackMaster.VendorMaster.Name,
+            //        vendorid = d.FeedbackMaster.VendorMaster.Id
+            //    })
+            //    .ToListAsync();
 
             // Group by Vendor
-            var groupedByVendor = feedbackDetails.GroupBy(fd => new { fd.vendorid, fd.Name });
+            var groupedByVendor = feedbackDetails.GroupBy(fd => new { fd.VendorId, fd.VendorName });
 
             var vendorSummaries = groupedByVendor.Select(group =>
             {
                 var totalCount = group.Count();
-                var poorCount = group.Count(fd => IsPoor(fd.AnswerID));
-                var normalCount = group.Count(fd => IsNormal(fd.AnswerID));
-                var goodCount = group.Count(fd => IsGood(fd.AnswerID));
+                var poorCount = group.Count(fd => IsPoor(fd.AnswerId));
+                var normalCount = group.Count(fd => IsNormal(fd.AnswerId));
+                var goodCount = group.Count(fd => IsGood(fd.AnswerId));
 
                 var poorPercentage = totalCount > 0 ? Math.Round((poorCount / (double)totalCount) * 100, 2) : 0;
                 var normalPercentage = totalCount > 0 ? Math.Round((normalCount / (double)totalCount) * 100, 2) : 0;
@@ -151,8 +316,8 @@ namespace feedback.Controllers
 
                 return new FeedbackSummary
                 {
-                    VendorId = group.Key.vendorid,
-                    VendorName = group.Key.Name,
+                    VendorId = group.Key.VendorId,
+                    VendorName = group.Key.VendorName,
                     TotalCount = totalCount,
                     PoorCount = poorCount,
                     NormalCount = normalCount,
@@ -165,6 +330,7 @@ namespace feedback.Controllers
 
             return Ok(vendorSummaries);
         }
+
 
 
         // Determines if the AnswerID is classified as poor
@@ -192,53 +358,133 @@ namespace feedback.Controllers
         [HttpGet("feedback-summary")]
         public async Task<IActionResult> GetFeedbackSummary()
         {
-            var feedbackDetails = await _context.FeedbackRecord
-      .FromSqlRaw(@"
-            SELECT 
-                d.[Id], 
-                d.[QuestionId], 
-                d.[AnswerID] AS AnswerId, 
-                s.Name AS AnswerName, 
-                v.Name AS VendorName, 
-                v.Id AS VendorId
-            FROM [feedback_react].[dbo].[FeedbackDetails] d
-            INNER JOIN [feedback_react].[dbo].[FeedbackMasters] f ON f.Id = d.FeedbackMasterId
-            INNER JOIN [feedback_react].[dbo].[VendorMasters] v ON v.Id = f.VendorMasterId
-            INNER JOIN [feedback_react].[dbo].[Service_answer] s ON s.Id = d.AnswerID
-        ")
-      .ToListAsync();
-
-            // Group by Vendor and Question
-            var groupedByVendorAndQuestion = feedbackDetails
-                .GroupBy(fd => new { fd.VendorId, fd.VendorName, fd.QuestionId });
-
-            // Create the summary list
-            var vendorFeedbackSummaries = groupedByVendorAndQuestion.Select(group =>
+            try
             {
-                var totalCount = group.Count();
-                var answersGrouped = group.GroupBy(g => new { g.AnswerId, g.AnswerName })
-                                          .Select(ag => new AnswerRecord
-                                          {
-                                              AnswerId = ag.Key.AnswerId,
-                                              AnswerName = ag.Key.AnswerName,
-                                              ResponseCount = totalCount > 0 ? Math.Round((ag.Count() / (double)totalCount) * 100, 2) : 0
+                // Fetch data with related entities using Includes
 
-                                          }).ToList();
+                var feedbackDetails = (from d in _context.FeedbackDetails
+                              join f in _context.FeedbackMasters on d.FeedbackMasterId equals f.Id
+                              join v in _context.VendorMasters on f.VendorMasterId equals v.Id
+                              join s in _context.Service_answer on d.AnswerID equals s.id
+                              select new
+                              {
+                                  Id = d.Id,
+                                  QuestionId = d.QuestionId,
+                                  AnswerId = d.AnswerID,
+                                  AnswerName = s.name,
+                                  VendorName = v.Name,
+                                  VendorId = v.Id
+                              }).ToList();
+                //var feedbackDetails = await _context.FeedbackDetails
+                //    .Include(d => d.FeedbackMaster)        // Include related FeedbackMaster entity
+                //    .ThenInclude(fm => fm.VendorMaster)     // Include related VendorMaster entity from FeedbackMaster
+                //    .Include(d => d.ServiceAnswer)         // Include related ServiceAnswer entity
+                //    .Select(d => new FeedbackRecord
+                //    {
+                //        Id = d.Id,
+                //        QuestionId = d.QuestionId,
+                //        AnswerId = d.AnswerID,
+                //        AnswerName = d.ServiceAnswer.name,
+                //        VendorName = d.FeedbackMaster.VendorMaster.Name,
+                //        VendorId = d.FeedbackMaster.VendorMaster.Id
+                //    })
+                //    .ToListAsync();
 
-                return new VendorFeedbackSummary
+                // Group by Vendor and Question
+                var groupedByVendorAndQuestion = feedbackDetails
+                    .GroupBy(fd => new { fd.VendorId, fd.VendorName, fd.QuestionId });
+
+                // Create the summary list
+                var vendorFeedbackSummaries = groupedByVendorAndQuestion.Select(group =>
                 {
-                    VendorId = group.Key.VendorId,
-                    VendorName = group.Key.VendorName,
-                    QuestionId = group.Key.QuestionId,
-                    AnswerRecord = answersGrouped
-                };
-            }).ToList();
+                    var totalCount = group.Count();
+                    var answersGrouped = group.GroupBy(g => new { g.AnswerId, g.AnswerName })
+                        .Select(ag => new AnswerRecord
+                        {
+                            AnswerId = ag.Key.AnswerId,
+                            AnswerName = ag.Key.AnswerName,
+                            ResponseCount = totalCount > 0 ? Math.Round((ag.Count() / (double)totalCount) * 100, 2) : 0
+                        }).ToList();
 
+                    return new VendorFeedbackSummary
+                    {
+                        VendorId = group.Key.VendorId,
+                        VendorName = group.Key.VendorName,
+                        QuestionId = group.Key.QuestionId,
+                        AnswerRecord = answersGrouped
+                    };
+                }).ToList();
 
-            return Ok(vendorFeedbackSummaries);
+                return Ok(vendorFeedbackSummaries);
+            }
+            catch (Exception ex)
+            {
+                // Log the exception and return a user-friendly message
+               
+                return StatusCode(500, "Internal server error. Please try again later.");
+            }
         }
 
 
+
+        [HttpGet("feedback-Detail_summary")]
+        public async Task<IActionResult> GetFeedbackDetailSummary()
+        {
+            try
+            {
+                // Fetch data with related entities using Includes
+
+                var feedbackData = await (from fm in _context.FeedbackMasters
+                                          join b in _context.Branches on fm.BranchId equals b.Id
+                                          join vm in _context.VendorMasters on fm.VendorMasterId equals vm.Id
+                                          join fd in _context.FeedbackDetails on fm.Id equals fd.FeedbackMasterId
+                                          join q in _context.Questions on fd.QuestionId equals q.Id
+                                          join sa in _context.Service_answer on fd.AnswerID equals sa.id
+                                          where q.Id == sa.QuestionsId
+                                          orderby fm.Date descending
+                                          select new
+                                          {
+                                              FeedbackMasterId = fm.Id,
+                                              BranchName = b.BranchName,
+                                              VendorName = vm.Name,
+                                              Question = q.Id,
+                                              Answer = sa.name,
+                                              fm.Date,
+                                              fm.Comment
+                                          }).ToListAsync();
+
+                var groupedFeedback = feedbackData
+                    .GroupBy(f => new { f.FeedbackMasterId, f.BranchName })
+                    .Select(g => new
+                    {
+                        FeedbackMasterId = g.Key.FeedbackMasterId,
+                        BranchName = g.Key.BranchName,
+                        Vendors = g.GroupBy(v => v.VendorName)
+                                   .Select(v => new
+                                   {
+                                       VendorName = v.Key,
+                                       QuestionsAndAnswers = v.Select(q => new
+                                       {
+                                           q.Question,
+                                           q.Answer
+                                       }).ToList()
+                                   }).ToList(),
+                       
+                    });
+
+
+
+
+                return Ok(groupedFeedback);
+            
+            }
+            catch (Exception ex)
+            {
+                // Log the exception and return a user-friendly message
+
+                return StatusCode(500, "Internal server error. Please try again later.");
+            }
+        }
 
 
         [HttpPost("calculate-percentage")]

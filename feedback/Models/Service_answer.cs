@@ -8,6 +8,7 @@
 
         // Navigation property
         public Questions Question { get; set; }
+        public ICollection<FeedbackDetail> FeedbackDetails { get; set; }
 
     }
 }

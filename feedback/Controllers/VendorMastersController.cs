@@ -15,13 +15,14 @@ namespace feedback.Controllers
     [ApiController]
     public class VendorMastersController : ControllerBase
     {
-        private readonly string connectionString = "Data Source=192.168.1.9;Initial Catalog=feedback_react;Persist Security Info=True;User ID=sa;Password=Windows@3210;Trust Server Certificate=True";
+        private readonly string _connectionString;
 
         private readonly AppDbContext _context;
 
-        public VendorMastersController(AppDbContext context)
+        public VendorMastersController(AppDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _connectionString = configuration.GetConnectionString("DefaultConnection");
         }
 
         // GET: api/VendorMasters
@@ -29,6 +30,26 @@ namespace feedback.Controllers
         public async Task<ActionResult<IEnumerable<VendorMaster>>> GetVendorMasters()
         {
             return await _context.VendorMasters.ToListAsync();
+        }
+        // GET: api/VendorMasters/vendor/{id}
+        [HttpGet("vendor/{id}")]
+        public async Task<ActionResult<VendorMaster>> GetVendorById(int id)
+        {
+            var vendor = await _context.VendorMasters
+                .Where(v => v.Id == id)
+                .Select(v => new
+                {
+                    v.Id,
+                    v.Name
+                })
+                .FirstOrDefaultAsync();
+
+            if (vendor == null)
+            {
+                return NotFound(new { message = "Vendor not found" });
+            }
+
+            return Ok(vendor);
         }
 
         // GET: api/VendorMasters/5
@@ -107,6 +128,22 @@ namespace feedback.Controllers
 
             return NoContent();
         }
+
+        [HttpGet("GetVendors")]
+        public IActionResult GetVendors(int regionId, int serviceId)
+        {
+            var vendors = (from vd in _context.VendorDetails
+                           join vm in _context.VendorMasters on vd.VendorMasterId equals vm.Id
+                           where vd.RegionId == regionId && vd.ServiceId == serviceId
+                           select new
+                           {
+                               Id = vm.Id,
+                               Name = vm.Name
+                           }).Distinct().ToList();
+
+            return Ok(vendors);
+        }
+
 
         private bool VendorMasterExists(int id)
         {

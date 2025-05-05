@@ -5,6 +5,7 @@
         public int id { get; set; }
         public string name { get; set; }
         public int s_id { get; set; }
+        public int V_id { get; set; }
         public List<suggestion_answer> suggestion_answer { get; set; }
     }
 }

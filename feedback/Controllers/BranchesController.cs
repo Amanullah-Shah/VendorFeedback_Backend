@@ -30,6 +30,85 @@ namespace feedback.Controllers
             return await _context.Branches.ToListAsync();
         }
 
+
+
+
+        [HttpGet("PendingBranches")]
+        public async Task<IActionResult> GetPendingBranches()
+        {
+            var branchesWithoutFeedback = await (from b in _context.Branches
+                                                 join f in _context.FeedbackMasters on b.Id equals f.BranchId into feedbackGroup
+                                                 from fg in feedbackGroup.DefaultIfEmpty()
+                                                 group fg by new { b.Id, b.BranchName } into g
+                                                 where g.Count(x => x != null) == 0 // No feedback records
+                                                 select new
+                                                 {
+                                                     BranchId = g.Key.Id,
+                                                     BranchName = g.Key.BranchName,
+                                                     HasVendor1 = 0,
+                                                     HasVendor2 = 0,
+                                                     HasVendor3 = 0,
+                                                     HasVendor4 = 0,
+                                                     HasVendor5 = 0,
+                                                     HasVendor6 = 0,
+                                                     HasVendor7 = 0
+                                                 }).ToListAsync();
+
+            // Query 2: Branches with specific vendor conditions
+            var branchesWithVendorConditions = await (from b in _context.Branches
+                                                      join f in _context.FeedbackMasters on b.Id equals f.BranchId into feedbackGroup
+                                                      from fg in feedbackGroup.DefaultIfEmpty()
+                                                      group fg by new { b.Id, b.BranchName } into g
+                                                      select new
+                                                      {
+                                                          BranchId = g.Key.Id,
+                                                          BranchName = g.Key.BranchName,
+                                                          HasVendor1 = g.Max(x => x != null && x.VendorMasterId == 1 ? 1 : 0),
+                                                          HasVendor2 = g.Max(x => x != null && x.VendorMasterId == 2 ? 1 : 0),
+                                                          HasVendor3 = g.Max(x => x != null && x.VendorMasterId == 3 ? 1 : 0),
+                                                          HasVendor4 = g.Max(x => x != null && x.VendorMasterId == 7 ? 1 : 0),
+                                                          HasVendor5 = g.Max(x => x != null && x.VendorMasterId == 8 ? 1 : 0),
+                                                          HasVendor6 = g.Max(x => x != null && x.VendorMasterId == 9 ? 1 : 0),
+                                                          HasVendor7 = g.Max(x => x != null && x.VendorMasterId == 11 ? 1 : 0),
+                                                      })
+                                                      .Where(x =>
+    // Case 1: Only Vendor 1
+    (x.HasVendor1 == 1 && x.HasVendor2 == 0 && x.HasVendor3 == 0) ||
+
+    // Case 2: Only Vendor 2
+    (x.HasVendor1 == 0 && x.HasVendor2 == 1 && x.HasVendor3 == 0) ||
+
+    // Case 3: Only Vendor 3
+    (x.HasVendor1 == 0 && x.HasVendor2 == 0 && x.HasVendor3 == 1) ||
+
+    // Case 4: Vendor 1 and 2 only
+    (x.HasVendor1 == 1 && x.HasVendor2 == 1 && x.HasVendor3 == 0) ||
+
+    // Case 5: Vendor 1 and 3 only
+    (x.HasVendor1 == 1 && x.HasVendor2 == 0 && x.HasVendor3 == 1) ||
+
+    // Case 6: Vendor 2 and 3 only
+    (x.HasVendor1 == 0 && x.HasVendor2 == 1 && x.HasVendor3 == 1) ||
+
+    // Case 7: All three vendors
+    (x.HasVendor1 == 1 && x.HasVendor2 == 1 && x.HasVendor3 == 1) ||
+
+    // Case 8: No vendors
+    (x.HasVendor1 == 0 && x.HasVendor2 == 0 && x.HasVendor3 == 0)
+)
+
+                                                       .ToListAsync();
+
+            // Combine both results
+            var combinedResult = new
+            {
+                BranchesWithoutFeedback = branchesWithoutFeedback,
+                BranchesWithVendorConditions = branchesWithVendorConditions
+            };
+
+            return Ok(combinedResult);
+        }
+
         // GET: api/Branches/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Branch>> GetBranch(int id)

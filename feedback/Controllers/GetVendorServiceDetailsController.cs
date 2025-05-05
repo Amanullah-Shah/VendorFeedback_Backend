@@ -38,12 +38,12 @@ namespace feedback.Controllers
             
             
         }
-        [HttpGet("{sId}")]
-        public async Task<ActionResult<object>> GetQuestionsAndSuggestionsBySId(int sId)
+        [HttpGet("{sId}/{vId}")]
+        public async Task<ActionResult<object>> GetQuestionsAndSuggestionsBySId(int sId, int vId)
         {
             // Fetch the questions with the given S_id
             var questions = await _context.Questions
-                .Where(q => q.S_id == sId)
+                .Where(q => q.S_id == sId && q.V_id == vId)
                 .ToListAsync();
 
             if (questions == null || !questions.Any())
@@ -74,7 +74,7 @@ namespace feedback.Controllers
 
             // Fetch the suggestion questions with the given S_id
             var suggestionQuestions = await _context.suggestion_question
-                .Where(sq => sq.s_id == sId)
+                .Where(sq => sq.s_id == sId && sq.V_id == vId)
                 .ToListAsync();
 
             if (suggestionQuestions == null || !suggestionQuestions.Any())
@@ -115,14 +115,14 @@ namespace feedback.Controllers
 
 
         [HttpGet("ByRegionAndServiceId")]
-        public async Task<ActionResult<IEnumerable<DetailByServiceRegion>>> GetDetailByServiceRegion(int regionId, int serviceId)
+        public async Task<ActionResult<IEnumerable<DetailByServiceRegion>>> GetDetailByServiceRegion(int regionId, int serviceId, int vendorId)
         {
             var details = await _context.VendorDetails
-                .Where(vd => vd.RegionId == regionId && vd.ServiceId == serviceId)
+                .Where(vd => vd.RegionId == regionId && vd.ServiceId == serviceId && vd.VendorMasterId == vendorId)
                 .Include(vd => vd.Service)
                 .Include(vd => vd.VendorMaster)
                 .Select(vd => new DetailByServiceRegion
-                {
+                {   
                     ServiceId = vd.ServiceId,
                     ServiceName = vd.Service.ServiceName,
                     VendorName = vd.VendorMaster.Name,

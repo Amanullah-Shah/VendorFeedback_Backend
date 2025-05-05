@@ -9,6 +9,7 @@ using feedback.Data;
 using feedback.Models;
 using feedback.ViewModel;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 
 namespace feedback.Controllers
 {
@@ -17,10 +18,12 @@ namespace feedback.Controllers
     public class FeedbackMastersController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly string? _connectionString;
 
-        public FeedbackMastersController(AppDbContext context)
+        public FeedbackMastersController(AppDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _connectionString = configuration.GetConnectionString("DefaultConnection");
         }
 
         // GET: api/FeedbackMasters
@@ -29,6 +32,44 @@ namespace feedback.Controllers
         {
             return await _context.FeedbackMasters.ToListAsync();
         }
+
+
+        [HttpGet("OverallRating/{vendorId}/{regionId}")]
+        public async Task<ActionResult<IEnumerable<FeedbackMaster>>> GetOverallRating(int vendorId,int regionId)
+        {
+           
+            if (regionId!=0)
+            {
+                  var ratingdata = await _context.FeedbackMasters
+                    .Where(x => x.VendorMasterId == vendorId && x.RegionId == regionId)
+                    .Select(x => new
+                    {
+                        BranchName = _context.Branches.Where(b => b.Id == x.BranchId).Select(b => b.BranchName).FirstOrDefault(),
+                        x.Review,
+                        RegionName = _context.Regions.Where(r => r.Id == x.RegionId).Select(r => r.RegionName).FirstOrDefault(),
+                        x.Date,
+                        x.Comment
+                    }).ToListAsync();
+                return Ok(ratingdata);
+
+            }
+            else
+            {
+                   var ratingdata = await _context.FeedbackMasters
+                  .Where(x => x.VendorMasterId == vendorId)
+                  .Select(x => new
+                  {
+                      BranchName = _context.Branches.Where(b => b.Id == x.BranchId).Select(b => b.BranchName).FirstOrDefault(),
+                      x.Review,
+                      RegionName = _context.Regions.Where(r => r.Id == x.RegionId).Select(r => r.RegionName).FirstOrDefault(),
+                      x.Date,
+                      x.Comment
+                  }).ToListAsync();
+                return Ok(ratingdata);
+            }
+          
+        }
+
 
         // GET: api/FeedbackMasters/5
         [HttpGet("{id}")]
@@ -101,96 +142,53 @@ namespace feedback.Controllers
 
             return NoContent();
         }
-        private readonly string connectionString = "Data Source=192.168.1.9;Initial Catalog=feedback_react;Persist Security Info=True;User ID=sa;Password=Windows@3210;Trust Server Certificate=True";
         [HttpGet("history/{userId}/{vendorid}")]
-        public async Task<IActionResult> GetFeedback(int userId, int vendorid)
+        public async Task<IActionResult> GetFeedback(int userId, int vendorId)
         {
-            var feedbacks = new Dictionary<int, FeedbackVM>();
-
-            using (SqlConnection conn = new SqlConnection(connectionString))
-            {
-                await conn.OpenAsync();
-                using (SqlCommand cmd = new SqlCommand(@"
-            SELECT 
-                fm.Id AS FeedbackId,
-                vm.Name AS VendorName,
-                fm.Review,
-                fm.Date,
-                fm.Comment,
-                q.Name AS QuestionName,
-                sa.Name AS AnswerName,
-                sq.Name AS SuggestionQuestionName,
-                ssa.Name AS SuggestionAnswerName
-            FROM 
-                [feedback_react].[dbo].[FeedbackMasters] fm
-            INNER JOIN 
-                [feedback_react].[dbo].[VendorMasters] vm ON fm.VendorMasterId = vm.Id
-            INNER JOIN 
-                [feedback_react].[dbo].[FeedbackDetails] fd ON fm.Id = fd.FeedbackMasterId
-            LEFT JOIN 
-                [feedback_react].[dbo].[Questions] q ON fd.QuestionId = q.Id
-            LEFT JOIN 
-                [feedback_react].[dbo].[Service_answer] sa ON fd.AnswerID = sa.Id
-            LEFT JOIN 
-                [feedback_react].[dbo].[suggestion_question] sq ON fd.suggestionID = sq.Id
-            LEFT JOIN 
-                [feedback_react].[dbo].[suggestion_answer] ssa ON fd.suggestion_answerID = ssa.Id
-            WHERE 
-                fm.UserId = @UserId AND fm.VendorMasterId = @vendorid", conn))
+            // Fetch feedback details using LINQ with includes for related data
+            var feedbackDetails = await _context.FeedbackMasters
+                .Where(fm => fm.UserId == userId && fm.VendorMasterId == vendorId)
+                .Include(fm => fm.VendorMaster)
+                .Include(fm => fm.FeedbackDetails)
+                    .ThenInclude(fd => fd.Question)         // Include related Questions
+                .Include(fm => fm.FeedbackDetails)
+                    .ThenInclude(fd => fd.ServiceAnswer)   // Include related ServiceAnswer
+                .Include(fm => fm.FeedbackDetails)
+                    .ThenInclude(fd => fd.SuggestionQuestion) // Include related SuggestionQuestion
+                .Include(fm => fm.FeedbackDetails)
+                    .ThenInclude(fd => fd.SuggestionAnswer)   // Include related SuggestionAnswer
+                .Select(fm => new FeedbackVM
                 {
-                    cmd.Parameters.AddWithValue("@UserId", userId);
-                    cmd.Parameters.AddWithValue("@vendorid", vendorid);
-                    using (SqlDataReader reader = await cmd.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
+                    FeedbackId = fm.Id,
+                    VendorName = fm.VendorMaster.Name,
+                    Review = fm.Review,
+                    Date = fm.Date,
+                    Comment = fm.Comment,
+                    Questions = fm.FeedbackDetails
+                        .Where(fd => fd.Question != null && fd.ServiceAnswer != null)
+                        .GroupBy(fd => new { fd.Question.Name, fd.ServiceAnswer.name })
+                        .Select(g => new QuestionAnswer
                         {
-                            int feedbackId = reader.GetInt32(reader.GetOrdinal("FeedbackId"));
+                            QuestionName = g.Key.Name,
+                            AnswerName = g.Key.name
+                        })
+                        .ToList(),
+                    Suggestions = fm.FeedbackDetails
+                .Where(fd => fd.SuggestionQuestion != null)
+                .GroupBy(fd => new { SuggestionQuestionName = fd.SuggestionQuestion.name, SuggestionAnswerName = fd.SuggestionAnswer.name })
+                .Select(g => new SuggestionAnswer
+                {
+                    SuggestionQuestionName = g.Key.SuggestionQuestionName,
+                    SuggestionAnswerName = g.Key.SuggestionAnswerName
+                })
+                .ToList()
+                })
+                .ToListAsync();
 
-                            if (!feedbacks.ContainsKey(feedbackId))
-                            {
-                                feedbacks[feedbackId] = new FeedbackVM
-                                {
-                                    FeedbackId = feedbackId,
-                                    VendorName = reader.GetString(reader.GetOrdinal("VendorName")),
-                                    Review = reader.GetInt32(reader.GetOrdinal("Review")),
-                                    Date = reader.GetDateTime(reader.GetOrdinal("Date")),
-                                    Comment = reader.GetString(reader.GetOrdinal("Comment")),
-                                    Questions = new List<QuestionAnswer>(),
-                                    Suggestions = new List<SuggestionAnswer>(),
-                                    QuestionNames = new HashSet<string>(),
-                                    SuggestionQuestionNames = new HashSet<string>()
-                                };
-                            }
-
-                            var questionName = reader.IsDBNull(reader.GetOrdinal("QuestionName")) ? null : reader.GetString(reader.GetOrdinal("QuestionName"));
-                            var answerName = reader.IsDBNull(reader.GetOrdinal("AnswerName")) ? null : reader.GetString(reader.GetOrdinal("AnswerName"));
-                            var suggestionQuestionName = reader.IsDBNull(reader.GetOrdinal("SuggestionQuestionName")) ? null : reader.GetString(reader.GetOrdinal("SuggestionQuestionName"));
-                            var suggestionAnswerName = reader.IsDBNull(reader.GetOrdinal("SuggestionAnswerName")) ? null : reader.GetString(reader.GetOrdinal("SuggestionAnswerName"));
-
-                            if (!string.IsNullOrEmpty(questionName) && feedbacks[feedbackId].QuestionNames.Add(questionName))
-                            {
-                                feedbacks[feedbackId].Questions.Add(new QuestionAnswer
-                                {
-                                    QuestionName = questionName,
-                                    AnswerName = answerName
-                                });
-                            }
-
-                            if (!string.IsNullOrEmpty(suggestionQuestionName) && feedbacks[feedbackId].SuggestionQuestionNames.Add(suggestionQuestionName))
-                            {
-                                feedbacks[feedbackId].Suggestions.Add(new SuggestionAnswer
-                                {
-                                    SuggestionQuestionName = suggestionQuestionName,
-                                    SuggestionAnswerName = suggestionAnswerName
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-
-            return Ok(feedbacks.Values.ToList());
+            return Ok(feedbackDetails);
         }
+
+
 
 
         private bool FeedbackMasterExists(int id)

@@ -13,9 +13,11 @@ namespace feedback.Controllers
     public class UsersController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly ILogger<UsersController> _logger;
 
-        public UsersController(AppDbContext context)
+        public UsersController(ILogger<UsersController> logger, AppDbContext context)
         {
+            _logger = logger;
             _context = context;
         }
 
@@ -43,6 +45,9 @@ namespace feedback.Controllers
         [HttpPost("Validate")]
         public async Task<ActionResult> ValidateUser([FromBody] UserLoginDto loginDto)
         {
+            // Log that login attempt is being made
+            _logger.LogInformation($"Login attempt for User: {loginDto.LoginId}");
+
             var user = await _context.Users
                 .Where(u => u.ErpId == loginDto.LoginId && u.Password == loginDto.Password)
                 .Select(u => new
@@ -51,17 +56,22 @@ namespace feedback.Controllers
                     RegId = u.RegionId,
                     name = u.Name,
                     branch = u.BranchId,
-                    erp = u. ErpId,
+                    erp = u.ErpId,
                     id = u.Id,
                     role = u.Role
-
                 })
                 .FirstOrDefaultAsync();
 
             if (user != null)
             {
+                // Log successful login
+                _logger.LogInformation($"User {user.erp} (ID: {user.id}) successfully logged in. Region: {user.RegId}, Branch: {user.branch}");
                 return Ok(user);
             }
+
+            // Log failed login attempt
+            _logger.LogWarning($"Login failed for User: {loginDto.LoginId}");
+
             return Ok(new { isValid = false });
         }
 
@@ -130,7 +140,7 @@ namespace feedback.Controllers
 
     public class UserLoginDto
     {
-        public string LoginId { get; set; }
-        public string Password { get; set; }
+        public string? LoginId { get; set; }
+        public string? Password { get; set; }
     }
 }

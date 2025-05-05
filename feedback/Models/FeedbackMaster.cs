@@ -13,8 +13,11 @@ namespace feedback.Models
         public int RegionId { get; set; }
         public int Review { get; set; }
         public DateTime Date { get; set; }
-        public string Comment { get; set; }
+        public string? Comment { get; set; }
         public int VendorMasterId { get; set; }
+        public VendorMaster? VendorMaster { get; set; }  // Navigation property
+        public Branch? Branch { get; set; }  // Navigation property
+      
         public ICollection<FeedbackDetail>? FeedbackDetails { get; set; }
     }
 }
